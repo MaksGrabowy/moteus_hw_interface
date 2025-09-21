@@ -1,0 +1,9 @@
+<library path="moteus_hw_interface">
+  <class name="moteus_hw_interface/MoteusHwInterface"
+         type="moteus_hw_interface::MoteusHwInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Moteus system plugin for ros2_control.
+    </description>
+  </class>
+</library>
