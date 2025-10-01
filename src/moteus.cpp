@@ -102,6 +102,8 @@ void moteus::send_standard_query(){
     for(int i=0;i<6;i++)
 	    frame.data[10+i] = pad; //add padding to make the frame CAN FD compliant
     
+        //this frame reads current MODE, POSITION, VELOCIY, TORQUE, VOLTAGE, BOARD TEMP, POWER
+    
         
     int nbytes = write(sock, &frame, sizeof(struct canfd_frame));
     if (nbytes != sizeof(struct canfd_frame)) {
@@ -143,6 +145,24 @@ void moteus::write_stop(){
     frame.data[0] = 0x01;
     frame.data[1] = 0x00;
     frame.data[2] = 0x00;
+    u_int8_t pad = 0x50;
+    for(int i=0;i<5;i++)
+	    frame.data[3+i] = pad; //add padding to make the frame CAN FD compliant
+
+    std::lock_guard<std::mutex> lock(current_frame_mutex);
+    current_frame = frame;
+    resend_frame = true;
+}
+
+void moteus::write_brake(){
+    struct canfd_frame frame{};
+    frame.can_id  = 0x1000|can_ID|1<<31;   // CAN ID + extended ID flag. has to be changed to incorporate other IDs than 1
+    frame.len     = 8;       // Data length
+    frame.flags   = 0;       // No special flags
+
+    frame.data[0] = 0x01;
+    frame.data[1] = 0x00;
+    frame.data[2] = 0x0F;
     u_int8_t pad = 0x50;
     for(int i=0;i<5;i++)
 	    frame.data[3+i] = pad; //add padding to make the frame CAN FD compliant
