@@ -56,6 +56,9 @@ void moteus::setup(u_int8_t ID, const std::string& ifname){
     rxThread = std::thread(&moteus::receiveLoop, this);
     txThread = std::thread(&moteus::sendLoop, this);
     queryThread = std::thread(&moteus::queryLoop, this);
+
+    // let's reset the driver once everything is up
+    write_stop();
 }
 
 moteus::~moteus(){
@@ -126,6 +129,24 @@ void moteus::write_velocity(float velocity){
     for(int i=0;i<3;i++)
 	    frame.data[17+i] = pad; //add padding to make the frame CAN FD compliant
     
+    std::lock_guard<std::mutex> lock(current_frame_mutex);
+    current_frame = frame;
+    resend_frame = true;
+}
+
+void moteus::write_stop(){
+    struct canfd_frame frame{};
+    frame.can_id  = 0x1000|can_ID|1<<31;   // CAN ID + extended ID flag. has to be changed to incorporate other IDs than 1
+    frame.len     = 8;       // Data length
+    frame.flags   = 0;       // No special flags
+
+    frame.data[0] = 0x01;
+    frame.data[1] = 0x00;
+    frame.data[2] = 0x00;
+    u_int8_t pad = 0x50;
+    for(int i=0;i<5;i++)
+	    frame.data[3+i] = pad; //add padding to make the frame CAN FD compliant
+
     std::lock_guard<std::mutex> lock(current_frame_mutex);
     current_frame = frame;
     resend_frame = true;

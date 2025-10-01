@@ -136,7 +136,7 @@ hardware_interface::return_type MoteusHwInterface::read(const rclcpp::Time &, co
     set_state(name_pos, read_state.position);
   }
 
-  RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "Velocity: %.2f, Position: %.2f",read_state.velocity,read_state.position);
+  // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "Velocity: %.2f, Position: %.2f",read_state.velocity,read_state.position);
   return return_type::OK;
 }
 
@@ -146,7 +146,12 @@ hardware_interface::return_type MoteusHwInterface::write(const rclcpp::Time &, c
   // }
     for (const auto & [name, descr] : joint_command_interfaces_)
   {
-     driver.write_velocity(get_command(name));
+    double target_velocity = get_command(name);
+    if(target_velocity == 0.0){
+      driver.write_stop();
+    }else{
+      driver.write_velocity(target_velocity);
+    }
   }
   return return_type::OK;
 }

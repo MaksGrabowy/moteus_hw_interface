@@ -30,6 +30,8 @@ public:
     void deactivate();
     void send_standard_query();
     void write_velocity(float velocity);
+    void write_stop();
+
     MoteusState get_state();
 
     double commanded_velocity;
