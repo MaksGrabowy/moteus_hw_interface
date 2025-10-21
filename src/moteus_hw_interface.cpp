@@ -168,15 +168,40 @@ hardware_interface::return_type MoteusHwInterface::write(const rclcpp::Time &, c
       // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"velocity: %s",descr.get_interface_name().c_str());
       double target_velocity = get_command(name);
       if(target_velocity == 0.0){
-        double flux_brake_state = get_command(descr.get_prefix_name()+"/flux_brake");
-        RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"Flux brake state: %f",flux_brake_state);
-        if(flux_brake_state > 0.0){
-          driver.write_brake();
-        }else if(flux_brake_state == 0.0){
-          driver.write_stop();
+        if(delaying){
+          begin_time = std::chrono::high_resolution_clock::now();
+          delaying = false;
+        }else{
+          if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - begin_time).count() >= 1000){
+            double flux_brake_state = get_command(descr.get_prefix_name()+"/flux_brake");
+            // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"Flux brake state: %f",flux_brake_state);
+            if(flux_brake_state > 0.0){
+              driver.write_brake();
+            }else if(flux_brake_state == 0.0){
+              driver.write_stop();
+            }
+          }else{
+            driver.write_stop();
+          }
         }
+        // double flux_brake_state = get_command(descr.get_prefix_name()+"/flux_brake");
+        // // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"Flux brake state: %f",flux_brake_state);
+        // if(flux_brake_state > 0.0){
+        //   driver.write_brake();
+        // }else if(flux_brake_state == 0.0){
+        //   driver.write_stop();
+        // }
       }else{
-        driver.write_velocity(target_velocity);
+        if(!delaying){
+          begin_time = std::chrono::high_resolution_clock::now();
+          delaying = true;
+        }else{
+          if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - begin_time).count() >= 1000){
+            driver.write_velocity(target_velocity);
+          }else{
+            driver.write_stop();
+          }
+        }
       }
     }else if(!strcmp(descr.get_interface_name().c_str(),"flux_brake")){
       // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"brake: %s",descr.get_interface_name().c_str());

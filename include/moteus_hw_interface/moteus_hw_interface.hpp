@@ -49,6 +49,9 @@ private:
     std::vector<double> hw_states_positions_;
     std::vector<double> hw_states_velocities_;
 
+    bool delaying;
+    std::chrono::_V2::system_clock::time_point begin_time;
+
     // std::vector<std::uint32_t can_id_;
 
     // std::vector<double> hw_states_positions_;

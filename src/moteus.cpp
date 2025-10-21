@@ -59,6 +59,7 @@ void moteus::setup(u_int8_t ID, const std::string& ifname){
 
     // let's reset the driver once everything is up
     write_stop();
+    // write_brake();
 }
 
 moteus::~moteus(){
@@ -190,7 +191,7 @@ void moteus::receiveLoop() {
 void moteus::sendLoop() {
     while (running) {
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         if(resend_frame){
             std::lock_guard<std::mutex> lock(current_frame_mutex);
