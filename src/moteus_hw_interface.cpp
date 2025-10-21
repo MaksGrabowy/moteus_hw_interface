@@ -174,7 +174,6 @@ hardware_interface::return_type MoteusHwInterface::write(const rclcpp::Time &, c
         }else{
           if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - begin_time).count() >= 1000){
             double flux_brake_state = get_command(descr.get_prefix_name()+"/flux_brake");
-            // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"Flux brake state: %f",flux_brake_state);
             if(flux_brake_state > 0.0){
               driver.write_brake();
             }else if(flux_brake_state == 0.0){
@@ -190,7 +189,6 @@ hardware_interface::return_type MoteusHwInterface::write(const rclcpp::Time &, c
         //   driver.write_brake();
         // }else if(flux_brake_state == 0.0){
         //   driver.write_stop();
-        // }
       }else{
         if(!delaying){
           begin_time = std::chrono::high_resolution_clock::now();
