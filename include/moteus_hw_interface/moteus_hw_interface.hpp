@@ -27,8 +27,8 @@ public:
 
     hardware_interface::CallbackReturn on_init(const hardware_interface::HardwareInfo & info) override;
 
-    // std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
-    // std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
+    std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
+    std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
     // std::vector<hardware_interface::CommandInterface::SharedPtr> on_export_command_interfaces() override;
 
     hardware_interface::CallbackReturn on_configure(const rclcpp_lifecycle::State &previous_state) override;
