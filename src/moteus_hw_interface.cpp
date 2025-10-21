@@ -2,7 +2,7 @@
 
 #include "hardware_interface/lexical_casts.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
-// #include "rclcpp/rclcpp.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 // using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 using hardware_interface::return_type;
@@ -12,15 +12,25 @@ namespace moteus_hw_interface
 
 hardware_interface::CallbackReturn MoteusHwInterface::on_init(const hardware_interface::HardwareInfo & info){
   if(hardware_interface::SystemInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS){
-      // RCLCPP_FATAL(rclcpp::get_logger("MoteusHW"), "stopped");
+      RCLCPP_FATAL(rclcpp::get_logger("MoteusHW"), "stopped");
       return hardware_interface::CallbackReturn::ERROR;
     }
 
-    // hw_states_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-    // hw_states_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_states_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_states_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
-    // hw_commands_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-    // hw_commands_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    // uncommon states
+    hw_states_modes_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_states_faults_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_states_torques_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_states_voltages_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_states_powers_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_states_board_temperatures_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+
+    // commands
+    hw_commands_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_commands_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+    hw_commands_flux_brakes_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
     // hw_motor_temperature_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
     // hw_voltage_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
@@ -32,17 +42,26 @@ hardware_interface::CallbackReturn MoteusHwInterface::on_init(const hardware_int
     //   can_id_.emplace_back(std::stoi(joint.parameters.at("can_id")));
     // }
 
-    // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "Configuring...");
+    RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "Configuring...");
     // time_ = std::chrono::system_clock::now();
 
     ifname_ = info_.hardware_parameters["ifname"];
-    can_id_ = stoi(info_.hardware_parameters["can_id"]);
+    number_of_motors = stoi(info_.hardware_parameters["number_of_motors"]);
+    can_ids_.resize(number_of_motors,std::numeric_limits<int>::quiet_NaN());
+    for(int i = 0; i<number_of_motors;i++){
+      std::string id_name = "can_id"+std::to_string(i);
+      RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "%s id is %d",id_name.c_str(),stoi(info_.hardware_parameters[id_name]));
+      can_ids_.emplace_back(stoi(info_.hardware_parameters[id_name]));
+    }
+    // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "IDs: %s",info_.hardware_parameters["can_ids"]);
+    // can_ids_ = stoi(info_.hardware_parameters["can_ids"]);
+    can_id_ = 10;
 
     // hw_states_positions_.resize(info_.joints.size(), 0.0);
     // hw_states_velocities_.resize(info_.joints.size(), 0.0);
 
     // hw_commands_velocities_.resize(info_.joints.size(), 0.0);
-    // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "ifname: %c, id: %d",ifname_,can_id_);
+    RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "ifname: %s, id: %d",ifname_.c_str(),can_id_);
     return CallbackReturn::SUCCESS;
   }
 
@@ -71,16 +90,6 @@ hardware_interface::CallbackReturn MoteusHwInterface::on_deactivate(const rclcpp
   return CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::CommandInterface> MoteusHwInterface::export_command_interfaces(){
-  // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "Configuring command ifaces");
-
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
-
-  command_interfaces.emplace_back(hardware_interface::CommandInterface(info_.joints[0].name, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[0]));
-
-  return command_interfaces;
-}
-
 // std::vector<hardware_interface::CommandInterface> MoteusHwInterface::export_command_interfaces()
 // {
 //   std::vector<hardware_interface::CommandInterface> command_interfaces;
@@ -104,7 +113,27 @@ std::vector<hardware_interface::StateInterface> MoteusHwInterface::export_state_
   state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[0]));
   state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, hardware_interface::HW_IF_POSITION, &hw_states_positions_[0]));
 
+  // uncommon states
+  state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, "mode", &hw_states_modes_[0]));
+  state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, "fault", &hw_states_faults_[0]));
+  state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, "torque", &hw_states_torques_[0]));
+  state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, "voltage", &hw_states_voltages_[0]));
+  state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, "power", &hw_states_powers_[0]));
+  state_interfaces.emplace_back(hardware_interface::StateInterface(info_.joints[0].name, "board_temperature", &hw_states_board_temperatures_[0]));
+
   return state_interfaces;
+}
+
+std::vector<hardware_interface::CommandInterface> MoteusHwInterface::export_command_interfaces(){
+  // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "Configuring command ifaces");
+
+  std::vector<hardware_interface::CommandInterface> command_interfaces;
+
+  command_interfaces.emplace_back(hardware_interface::CommandInterface(info_.joints[0].name, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[0]));
+  command_interfaces.emplace_back(hardware_interface::CommandInterface(info_.joints[0].name, hardware_interface::HW_IF_POSITION, &hw_commands_positions_[0]));
+  command_interfaces.emplace_back(hardware_interface::CommandInterface(info_.joints[0].name, "flux_brake", &hw_commands_flux_brakes_[0]));
+
+  return command_interfaces;
 }
 // std::vector<hardware_interface::StateInterface> MoteusHwInterface::export_state_interfaces()
 // {
@@ -125,93 +154,59 @@ std::vector<hardware_interface::StateInterface> MoteusHwInterface::export_state_
 
 hardware_interface::return_type MoteusHwInterface::read(const rclcpp::Time &, const rclcpp::Duration &){
   MoteusState read_state = driver.get_state();
-  // // for (std::size_t i = 0; i < info_.joints.size(); i++){
-  //   hw_states_velocities_[0] = (double)read_state.velocity;
-  //   hw_states_positions_[0] = (double)read_state.position;
-  // // }
-  // for (std::size_t i = 0; i < info_.joints.size(); i++){
-  //   const auto name_mode = info_.joints[i].name + "/" + "mode";
-  //   set_state(name_mode, 1.0*read_state.mode);
+    hw_states_velocities_[0] = (double)read_state.velocity;
+    hw_states_positions_[0] = (double)read_state.position;
 
-  //   const auto name_fault = info_.joints[i].name + "/" + "fault";
-  //   set_state(name_fault, 1.0*read_state.fault);
+    // uncommon states
+    hw_states_modes_[0] = (double)read_state.mode;
+    hw_states_faults_[0] = (double)read_state.fault;
+    hw_states_torques_[0] = (double)read_state.torque;
+    hw_states_voltages_[0] = (double)read_state.voltage;
+    hw_states_powers_[0] = (double)read_state.power;
+    hw_states_board_temperatures_[0] = (double)read_state.board_temperature;
 
-  //   const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
-  //   set_state(name_pos, read_state.position);
-
-  //   const auto name_vel = info_.joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY;
-  //   set_state(name_vel, read_state.velocity);
-
-  //   const auto name_trq = info_.joints[i].name + "/" + hardware_interface::HW_IF_TORQUE;
-  //   set_state(name_trq, read_state.torque);
-
-  //   const auto name_voltage = info_.joints[i].name + "/" + "voltage";
-  //   set_state(name_voltage, read_state.voltage);
-
-  //   const auto name_power = info_.joints[i].name + "/" + "power";
-  //   set_state(name_voltage, read_state.power);
-
-  //   const auto name_board_temperature = info_.joints[i].name + "/" + "board_temperature";
-  //   set_state(name_voltage, read_state.board_temperature);
-  // }
-
-  // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"), "Velocity: %.2f, Position: %.2f",read_state.velocity,read_state.position);
   return return_type::OK;
 }
 
 hardware_interface::return_type MoteusHwInterface::write(const rclcpp::Time &, const rclcpp::Duration &){
   // for (std::size_t i = 0; i < info_.joints.size(); i++){
-  //   driver.write_velocity(hw_commands_velocities_[i]);
+    // driver.write_velocity(hw_commands_velocities_[0]);
   // }
-  // for (const auto & [name, descr] : joint_command_interfaces_){
-  //   if(!strcmp(descr.get_interface_name().c_str(),"velocity")){
-  //     // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"velocity: %s",descr.get_interface_name().c_str());
-  //     double target_velocity = get_command(name);
-  //     if(target_velocity == 0.0){
-  //       if(delaying){
-  //         begin_time = std::chrono::high_resolution_clock::now();
-  //         delaying = false;
-  //       }else{
-  //         if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - begin_time).count() >= 1000){
-  //           double flux_brake_state = get_command(descr.get_prefix_name()+"/flux_brake");
-  //           if(flux_brake_state > 0.0){
-  //             driver.write_brake();
-  //           }else if(flux_brake_state == 0.0){
-  //             driver.write_stop();
-  //           }
-  //         }else{
-  //           driver.write_stop();
-  //         }
-  //       }
-  //       // double flux_brake_state = get_command(descr.get_prefix_name()+"/flux_brake");
-  //       // // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"Flux brake state: %f",flux_brake_state);
-  //       // if(flux_brake_state > 0.0){
-  //       //   driver.write_brake();
-  //       // }else if(flux_brake_state == 0.0){
-  //       //   driver.write_stop();
-  //     }else{
-  //       if(!delaying){
-  //         begin_time = std::chrono::high_resolution_clock::now();
-  //         delaying = true;
-  //       }else{
-  //         if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - begin_time).count() >= 1000){
-  //           driver.write_velocity(target_velocity);
-  //         }else{
-  //           driver.write_stop();
-  //         }
-  //       }
-  //     }
-  //   }else if(!strcmp(descr.get_interface_name().c_str(),"flux_brake")){
-  //     // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"brake: %s",descr.get_interface_name().c_str());
-  //     // double brake_mode = get_command(name);
-  //     // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),
-  //     //   "key: %s, prefix: %s, iface: %s, full: %s",
-  //     //   name.c_str(),
-  //     //   descr.get_prefix_name().c_str(),
-  //     //   descr.get_interface_name().c_str(),
-  //     //   descr.get_name().c_str());
-  //   }
-  // }
+      double target_velocity = hw_commands_velocities_[0];
+      if(target_velocity == 0.0){
+        if(delaying){
+          begin_time = std::chrono::high_resolution_clock::now();
+          delaying = false;
+        }else{
+          if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - begin_time).count() >= 1000){
+            double flux_brake_state = hw_commands_flux_brakes_[0];
+            if(flux_brake_state > 0.0){
+              driver.write_brake();
+            }else if(flux_brake_state == 0.0){
+              driver.write_stop();
+            }
+          }else{
+            driver.write_stop();
+          }
+        }
+        // double flux_brake_state = get_command(descr.get_prefix_name()+"/flux_brake");
+        // // RCLCPP_INFO(rclcpp::get_logger("MoteusHW"),"Flux brake state: %f",flux_brake_state);
+        // if(flux_brake_state > 0.0){
+        //   driver.write_brake();
+        // }else if(flux_brake_state == 0.0){
+        //   driver.write_stop();
+      }else{
+        if(!delaying){
+          begin_time = std::chrono::high_resolution_clock::now();
+          delaying = true;
+        }else{
+          if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - begin_time).count() >= 1000){
+            driver.write_velocity(target_velocity);
+          }else{
+            driver.write_stop();
+          }
+        }
+      }
   return return_type::OK;
 }
 } // namespace moteus_hw_interface

@@ -43,26 +43,32 @@ private:
     std::string ifname_;
 
     std::uint32_t can_id_;
+    int number_of_motors;
+    std::vector<uint32_t> can_ids_;
 
-    std::vector<double> hw_commands_velocities_;
+    // std::vector<double> hw_commands_velocities_;
 
-    std::vector<double> hw_states_positions_;
-    std::vector<double> hw_states_velocities_;
+    // std::vector<double> hw_states_positions_;
+    // std::vector<double> hw_states_velocities_;
 
     bool delaying;
     std::chrono::_V2::system_clock::time_point begin_time;
 
     // std::vector<std::uint32_t can_id_;
 
-    // std::vector<double> hw_states_positions_;
-    // std::vector<double> hw_states_velocities_;
+    std::vector<double> hw_states_positions_;
+    std::vector<double> hw_states_velocities_;
 
-    // std::vector<double> hw_commands_positions_;
-    // std::vector<double> hw_commands_velocities_;
+    std::vector<double> hw_commands_positions_;
+    std::vector<double> hw_commands_velocities_;
+    std::vector<double> hw_commands_flux_brakes_;
 
-    // std::vector<double> hw_motor_temperature_;
-    // std::vector<double> hw_voltage_;
-
+    std::vector<double> hw_states_modes_;
+    std::vector<double> hw_states_faults_;
+    std::vector<double> hw_states_torques_;
+    std::vector<double> hw_states_voltages_;
+    std::vector<double> hw_states_powers_;
+    std::vector<double> hw_states_board_temperatures_;
 };
 } // moteus_hw_interface
 #endif
