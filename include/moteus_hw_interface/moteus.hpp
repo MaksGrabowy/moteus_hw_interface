@@ -17,6 +17,7 @@
 #include <functional>
 #include <string>
 #include <thread>
+#include <vector>
 
 
 class moteus {
@@ -26,19 +27,32 @@ public:
     moteus();
     ~moteus();
 
-    void setup(u_int8_t ID, const std::string& ifname);
+    void setup(std::vector<uint8_t> can_ids, const std::string& ifname);
     void deactivate();
-    void send_standard_query();
+    void send_standard_query(int driver_number);
     void write_velocity(float velocity);
+    void write_velocity(std::vector<double> velocities);
     void write_stop();
     void write_brake();
 
-    MoteusState get_state();
+    // MoteusState get_state();
+    std::vector<MoteusState> get_state();
 
     double commanded_velocity;
     MoteusState state_;
+    std::vector<MoteusState> states_;
+
+    u_int8_t mode;
+    float position;
+    float velocity;
+    float torque;
+    float power;
+    float voltage;
+    float board_temperature;
+    u_int16_t fault;
 private:
     u_int8_t can_ID;
+    std::vector<uint8_t> drivers;
     std::string interface;
     
     int sock{-1};
@@ -52,6 +66,7 @@ private:
     Callback callback;
 
     canfd_frame current_frame;
+    std::vector<canfd_frame> current_frames;
     std::mutex current_frame_mutex;
 
     void receiveLoop();
@@ -62,18 +77,13 @@ private:
 
     // driver state
     std::mutex current_state_mutex;
-    u_int8_t mode;
-    float position;
-    float velocity;
-    float torque;
-    float power;
-    float voltage;
-    float temperature;
-    u_int16_t fault;
+
 
     // nan
     u_int32_t nan = 0x7fc00000;
     u_int32_t zero = 0;
+
+    int findIndex(std::vector<uint8_t>& v, uint8_t val);
 };
 
 #endif /* INC_MOTEUS_H_ */

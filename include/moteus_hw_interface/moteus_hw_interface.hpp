@@ -38,13 +38,15 @@ public:
     hardware_interface::return_type read(const rclcpp::Time &, const rclcpp::Duration &) override;
     hardware_interface::return_type write(const rclcpp::Time &, const rclcpp::Duration &) override;
 
+    std::vector<MoteusState> read_state;
+
 private:
     moteus driver;
     std::string ifname_;
 
     std::uint32_t can_id_;
     int number_of_motors;
-    std::vector<uint32_t> can_ids_;
+    std::vector<uint8_t> can_ids_;
 
     // std::vector<double> hw_commands_velocities_;
 
@@ -69,6 +71,8 @@ private:
     std::vector<double> hw_states_voltages_;
     std::vector<double> hw_states_powers_;
     std::vector<double> hw_states_board_temperatures_;
+
+    
 };
 } // moteus_hw_interface
 #endif

@@ -15,12 +15,17 @@
 
 #include <chrono>
 #include <thread>
+#include <vector>
 
 moteus::moteus()
 {}
 
-void moteus::setup(u_int8_t ID, const std::string& ifname){
-    can_ID = ID;
+void moteus::setup(std::vector<uint8_t> can_ids, const std::string& ifname){
+    drivers = can_ids;
+    std::cout << "In moteus setup, can_ids length = "<< can_ids.size() <<std::endl;
+    current_frames.resize(drivers.size());
+    states_.resize(drivers.size());
+
     interface = ifname;
     // Open socket
     sock = socket(PF_CAN, SOCK_RAW, CAN_RAW);
@@ -78,10 +83,11 @@ void moteus::deactivate(){
     if (sock >= 0) close(sock);
 }
 
-void moteus::send_standard_query(){
+void moteus::send_standard_query(int driver_number){
 
     struct canfd_frame frame{};
-    frame.can_id  = 0x8000|can_ID|1<<31;   // CAN ID + extended ID flag. has to be changed to incorporate other IDs than 1
+    frame.can_id  = 0x8000|(drivers[driver_number]&0x00ff)|1<<31;   // CAN ID + extended ID flag. has to be changed to incorporate other IDs than 1
+    std::cout << "In query setup, driver id = "<< drivers[driver_number] <<std::endl;
     frame.len     = 16;       // Data length
     frame.flags   = 0;       // No special flags
 
@@ -137,21 +143,58 @@ void moteus::write_velocity(float velocity){
     resend_frame = true;
 }
 
-void moteus::write_stop(){
-    struct canfd_frame frame{};
-    frame.can_id  = 0x1000|can_ID|1<<31;   // CAN ID + extended ID flag. has to be changed to incorporate other IDs than 1
-    frame.len     = 8;       // Data length
-    frame.flags   = 0;       // No special flags
+void moteus::write_velocity(std::vector<double> velocities){
+    std::vector<canfd_frame> drivers_frames;
+    drivers_frames.resize(drivers.size());
+    for (auto i = 0u; i < drivers.size(); i++){
+        struct canfd_frame frame{};
 
-    frame.data[0] = 0x01;
-    frame.data[1] = 0x00;
-    frame.data[2] = 0x00;
-    u_int8_t pad = 0x50;
-    for(int i=0;i<5;i++)
-	    frame.data[3+i] = pad; //add padding to make the frame CAN FD compliant
+        frame.can_id  = 0x1000|drivers[i]|1<<31;   // CAN ID + extended ID flag. has to be changed to incorporate other IDs than 1
+        frame.len     = 20;       // Data length
+        frame.flags   = 0;       // No special flags
 
+        frame.data[0] = 0x01;
+        frame.data[1] = 0x00;
+        frame.data[2] = 0x0A;
+        frame.data[3] = 0x0F;
+        frame.data[4] = 0x20;
+        memcpy(frame.data+5,&nan,4);
+        float vel = (float) velocities[i];
+        memcpy(frame.data+9,&vel,4);
+        memcpy(frame.data+13,&zero,4);
+        u_int8_t pad = 0x50;
+        for(int j=0;j<3;j++)
+            frame.data[17+j] = pad; //add padding to make the frame CAN FD compliant
+        drivers_frames[i] = frame;
+    }
     std::lock_guard<std::mutex> lock(current_frame_mutex);
-    current_frame = frame;
+    current_frames = drivers_frames;
+    resend_frame = true;
+    // for(int driver_number = 0;driver_number<drivers.size();driver_number++)
+    //     int n = write(sock, &current_frames[driver_number], sizeof(current_frames[driver_number]));
+}
+
+
+void moteus::write_stop(){
+    std::vector<canfd_frame> drivers_frames;
+    drivers_frames.resize(drivers.size());
+    for (auto i = 0u; i < drivers.size(); i++){
+        struct canfd_frame frame{};
+        frame.can_id  = 0x1000|drivers[i]|1<<31;   // CAN ID + extended ID flag. has to be changed to incorporate other IDs than 1
+        frame.len     = 8;       // Data length
+        frame.flags   = 0;       // No special flags
+
+        frame.data[0] = 0x01;
+        frame.data[1] = 0x00;
+        frame.data[2] = 0x00;
+        u_int8_t pad = 0x50;
+        for(int i=0;i<5;i++)
+            frame.data[3+i] = pad; //add padding to make the frame CAN FD compliant
+
+        drivers_frames[i] = frame;
+    }
+    std::lock_guard<std::mutex> lock(current_frame_mutex);
+    current_frames = drivers_frames;
     resend_frame = true;
 }
 
@@ -189,24 +232,31 @@ void moteus::receiveLoop() {
 }
 
 void moteus::sendLoop() {
+    int driver_number = 0;
     while (running) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
+        if(driver_number == drivers.size())
+            driver_number = 0;
         if(resend_frame){
             std::lock_guard<std::mutex> lock(current_frame_mutex);
-            int n = write(sock, &current_frame, sizeof(current_frame));
-            if (n != sizeof(current_frame)) {
+            int n = write(sock, &current_frames[driver_number], sizeof(current_frames[driver_number]));
+            if (n != sizeof(current_frames[driver_number])) {
                 std::cerr << "Failed to send CAN frame "<< std::endl;
             }
+            driver_number++;
         }
     }
 }
 
 void moteus::queryLoop() {
+    int driver_number = 0;
     while (running) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        send_standard_query();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if(driver_number == drivers.size())
+            driver_number = 0;
+        send_standard_query(driver_number);
+        driver_number++;
     }
 }
 
@@ -218,34 +268,93 @@ void moteus::interpret_frame(const struct canfd_frame& frame){
     // }
     // std::cout << std::dec << std::endl;
     // memcpy(&this->mode,frame.data+2,1);
+    uint8_t in_id = (frame.can_id&CAN_EFF_MASK)>>8;
+    int ext_id = frame.can_id&CAN_EFF_MASK;
+
+    int driver_index = findIndex(drivers,in_id);
+    if(driver_index != -1 && ext_id < 0x8000){
+        std::lock_guard<std::mutex> lock(current_state_mutex);
+        // memcpy(&this->states_[driver_index].mode, frame.data+2,1);
+
+        // memcpy(&this->states_[driver_index].position,frame.data+5,4);
+        // memcpy(&this->states_[driver_index].velocity,frame.data+9,4);
+        // memcpy(&this->states_[driver_index].torque,frame.data+13,4);
+
+        // memcpy(&this->states_[driver_index].power,frame.data+19,4);
+
+        // memcpy(&this->states_[driver_index].voltage,frame.data+25,4);
+        // memcpy(&this->states_[driver_index].board_temperature,frame.data+29,4);
+
+        // memcpy(&this->states_[driver_index].fault,frame.data+35,2);
+        memcpy(&this->mode, frame.data+2,1);
+
+        memcpy(&this->position,frame.data+5,4);
+        memcpy(&this->velocity,frame.data+9,4);
+        memcpy(&this->torque,frame.data+13,4);
+
+        memcpy(&this->power,frame.data+19,4);
+
+        memcpy(&this->voltage,frame.data+25,4);
+        memcpy(&this->board_temperature,frame.data+29,4);
+
+        memcpy(&this->fault,frame.data+35,2);
+
+        // states_[driver_index].mode = mode;
+
+        // states_[driver_index].position = position;
+        // states_[driver_index].velocity = velocity;
+        // states_[driver_index].torque = torque;
+
+        // states_[driver_index].power = power;
+
+        // states_[driver_index].voltage = voltage;
+        // states_[driver_index].board_temperature = board_temperature;
+
+        // states_[driver_index].fault = fault;
+        MoteusState temp;
+        
+        temp.mode = this->mode;
+
+        temp.position = this->position;
+        temp.velocity = this->velocity;
+        temp.torque = this->torque;
+
+        temp.power = this->power;
+
+        temp.voltage = this->voltage;
+        temp.board_temperature = this->board_temperature;
+
+        temp.fault = this->fault;
+        states_[driver_index] = temp;
+        // std::cout << "Mode=0x" << std::setw(2) << std::setfill('0') << std::hex << std::uppercase << (int) mode;
+        // std::cout.precision(4);
+        // std::cout << " Pos=" << position << " Vel=" << velocity << " Voltage=" << voltage << " Temp=" << temperature << std::endl;
+    }
+}
+std::vector<MoteusState> moteus::get_state(){
     std::lock_guard<std::mutex> lock(current_state_mutex);
-    memcpy(&this->mode, frame.data+2,1);
-
-    memcpy(&this->position,frame.data+5,4);
-    memcpy(&this->velocity,frame.data+9,4);
-    memcpy(&this->torque,frame.data+13,4);
-
-    memcpy(&this->power,frame.data+19,4);
-
-    memcpy(&this->voltage,frame.data+25,4);
-    memcpy(&this->temperature,frame.data+29,4);
-
-    memcpy(&this->fault,frame.data+35,2);
-    // std::cout << "Mode=0x" << std::setw(2) << std::setfill('0') << std::hex << std::uppercase << (int) mode;
-    // std::cout.precision(4);
-    // std::cout << " Pos=" << position << " Vel=" << velocity << " Voltage=" << voltage << " Temp=" << temperature << std::endl;
+    // MoteusState current_state;
+    // current_state.mode = this->mode;
+    // current_state.position = this->position;
+    // current_state.velocity = this->velocity;
+    // current_state.torque = this->torque;
+    // current_state.power = this->power;
+    // current_state.voltage = this->voltage;
+    // current_state.board_temperature = this->temperature;
+    // current_state.fault = this->fault;
+    // std::vector<MoteusState> current_states = states_;
+    return states_;
 }
 
-MoteusState moteus::get_state(){
-    std::lock_guard<std::mutex> lock(current_state_mutex);
-    MoteusState current_state;
-    current_state.mode = this->mode;
-    current_state.position = this->position;
-    current_state.velocity = this->velocity;
-    current_state.torque = this->torque;
-    current_state.power = this->power;
-    current_state.voltage = this->voltage;
-    current_state.board_temperature = this->temperature;
-    current_state.fault = this->fault;
-    return current_state;
+int moteus::findIndex(std::vector<uint8_t>& v, uint8_t val) {
+    for (int i = 0; i < v.size(); i++) {
+      
+      	// When the element is found
+        if (v[i] == val) {
+            return i;
+        }
+    }
+
+  	// When the element is not found
+  	return -1;
 }
